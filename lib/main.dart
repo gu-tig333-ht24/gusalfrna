@@ -1,127 +1,283 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const MyApp());
+// Svepa höger för att ta bort Todos.
+// klicka på Todos för att kryssa.
+
+class Todo {
+  Todo({required this.id, required this.name, required this.checked});
+  final String id;
+  final String name;
+  bool checked;
+
+  factory Todo.fromJson(Map<String, dynamic> json) {
+    return Todo(
+      id: json['id'],
+      name: json['title'],
+      checked: json['done'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': name,
+      'done': checked,
+    };
+  }
 }
 
-//test
+class TodoItem extends StatelessWidget {
+  TodoItem({
+    required this.todo,
+    required this.onTodoChanged,
+  }) : super(key: ObjectKey(todo));
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final Todo todo;
+  final ValueChanged<Todo> onTodoChanged;
 
-  // This widget is the root of your application.
+  TextStyle? _getTextStyle(bool checked) {
+    if (!checked) return null;
+
+    return const TextStyle(
+      color: Colors.black54,
+      decoration: TextDecoration.lineThrough,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return ListTile(
+      onTap: () {
+        onTodoChanged(todo);
+      },
+      leading: CircleAvatar(
+        child: Text(todo.name[0]),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: Text(todo.name, style: _getTextStyle(todo.checked)),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class TodoList extends StatefulWidget {
+  const TodoList({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _TodoListState createState() => _TodoListState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _TodoListState extends State<TodoList> {
+  final TextEditingController _textFieldController = TextEditingController();
+  final List<Todo> _todos = <Todo>[];
+  String? _apiKey;
+  String? _errorMessage;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _registerAndFetchTodos();
+    _loadTodos();
+  }
+
+  Future<void> _registerAndFetchTodos() async {
+    await _register();
+    await _fetchTodos();
+  }
+
+  Future<void> _loadTodos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final todoList = prefs.getStringList('todos') ?? [];
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _todos.clear();
+      _todos.addAll(todoList.map((item) {
+        final parts = item.split('|');
+        return Todo(
+          id: parts[0],
+          name: parts[1],
+          checked: parts[2] == 'true',
+        );
+      }).toList());
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+  // Spara tod
+  Future<void> _saveTodos() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> todoList = _todos.map((todo) {
+      return '${todo.id}|${todo.name}|${todo.checked}';
+    }).toList();
+    await prefs.setStringList('todos', todoList);
+  }
+
+  Future<void> _register() async {
+    final response = await http
+        .get(Uri.parse("https://todoapp-api.apps.k8s.gu.se/register"));
+
+    if (response.statusCode == 200) {
+      _apiKey = response.body;
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to register for API key: ${response.body}')),
+      );
+    }
+  }
+
+  Future<void> _fetchTodos() async {
+    if (_apiKey == null) return; // Ingen API-nyckel tillgänglig
+
+    final response = await http.get(
+        Uri.parse("https://todoapp-api.apps.k8s.gu.se/todos?key=$_apiKey"));
+
+    if (response.statusCode == 200) {
+      final List<dynamic> todoList = json.decode(response.body);
+      setState(() {
+        _todos.clear();
+        _todos.addAll(todoList.map((data) => Todo.fromJson(data)).toList());
+      });
+    } else {
+      // Hantera fel vid hämtning av todos
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load todos: ${response.body}')),
+      );
+    }
+  }
+
+  void _handleTodoChange(Todo todo) async {
+    final updatedTodo = Todo(
+      id: todo.id,
+      name: todo.name,
+      checked: !todo.checked,
+    );
+
+    setState(() {
+      todo.checked = !todo.checked;
+    });
+
+    await _saveTodos();
+  }
+
+  void _addTodoItem(String name) async {
+    if (name.isEmpty) {
+      setState(() {
+        _errorMessage = 'Todo item cannot be empty';
+      });
+      return;
+    }
+
+    final newTodo = Todo(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      checked: false,
+    );
+
+    setState(() {
+      _todos.add(newTodo);
+      _errorMessage = null;
+    });
+
+    await _saveTodos(); // Spara ändringar i todos
+    _textFieldController.clear();
+  }
+
+  void _removeTodoItem(Todo todo) async {
+    setState(() {
+      _todos.remove(todo);
+    });
+
+    await _saveTodos();
+  }
+
+  Future<void> _displayDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Add a new todo item'),
+          content: TextField(
+            controller: _textFieldController,
+            decoration: const InputDecoration(hintText: 'Type your new todo'),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Add'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _addTodoItem(_textFieldController.text);
+              },
             ),
           ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+        );
+      },
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tig333 Todo list'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              children: _todos.map((Todo todo) {
+                return Dismissible(
+                  key: Key(todo.id),
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  direction: DismissDirection.startToEnd,
+                  onDismissed: (direction) {
+                    _removeTodoItem(todo);
+                  },
+                  child: TodoItem(
+                    todo: todo,
+                    onTodoChanged: _handleTodoChange,
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _displayDialog(),
+        tooltip: 'Add Item',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class TodoApp extends StatelessWidget {
+  const TodoApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      title: 'Todo list',
+      home: TodoList(),
+    );
+  }
+}
+
+void main() {
+  runApp(const TodoApp());
 }
